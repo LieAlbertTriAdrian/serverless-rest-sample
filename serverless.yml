@@ -1,0 +1,190 @@
+# Welcome to serverless. Read the docs
+# https://serverless.com/framework/docs/
+service: serverless-app-rest-api
+
+package:
+  exclude:
+  - coverage/**
+  - .circleci/**
+
+# The `provider` block defines where your service will be deployed
+provider:
+  name: aws
+  runtime: nodejs6.10
+  stage: dev
+  region: us-west-2
+  tracing: true
+  iamRoleStatements:
+    - Effect: "Allow" # xray permissions (required) 
+      Action:
+        - "xray:PutTraceSegments"
+        - "xray:PutTelemetryRecords"
+        - "s3:*"
+        - "sqs:*"
+        - "rekognition:*"
+        - "dynamodb:*"
+        - "sagemaker:*"
+        - "states:*"
+      Resource:
+        - "*"
+
+plugins:
+  - serverless-plugin-tracing
+  - serverless-step-functions
+  - serverless-pseudo-parameters
+functions:
+  useModel:
+    handler: handler.useModel
+    events: 
+      - http: 
+          path: sagemaker/validate
+          method: POST
+          cors: true
+  createIdentityValidation:
+    handler: handler.createIdentityRequest
+    events: 
+      - http: 
+          path: identity_validations
+          method: POST
+          cors: true
+  getIdentityValidations:
+    handler: handler.getIdentityValidations
+    events: 
+      - http: 
+          path: identity_validations
+          method: GET
+          cors: true
+  getIdentityValidation:
+    handler: handler.getIdentityValidation
+    events:
+      - http:
+          path: identity_validations/{id}
+          method: GET
+          cors: true
+  verify:
+    handler: handler.verifyIdentity
+    events:
+      - http:
+          path: verify
+          method: POST
+          cors: true
+  verifyIdentityV2:
+    handler: handler.verifyIdentityV2
+  getIdentityValidationStats:
+    handler: handler.getIdentityValidationStats
+    events:
+      - http:
+          path: identity_validations_stats/{customer_id}
+          method: GET
+          cors: true
+  uploadKTPImage: 
+    handler: handler.uploadKTPImage
+  uploadPhotoImage: 
+    handler: handler.uploadPhotoImage
+  compareKTPAndPhotoFace:
+    handler: handler.compareKTPAndPhotoFace
+  completeValidation:
+    handler: handler.completeValidation
+  samplequeue:
+    handler: handler.helloQueueMessage
+    events:
+      - sqs: arn:aws:sqs:us-west-2:YOUR_AWS_ACCOUNT_ID:sample-queue
+  sampledestinationqueue:
+    handler: handler.helloQueueMessage
+    events:
+      - sqs: arn:aws:sqs:us-west-2:YOUR_AWS_ACCOUNT_ID:sample-destination-queue
+  healthcheck:
+    handler: handler.helloWorld
+    tracing: false
+    events:
+      - http:
+          path: health-check
+          method: get
+          cors: true
+  detectNameFromKtpImages:
+    handler: handler.detectNameFromKtpImages
+  identityResult:
+    handler: handler.identityResult
+
+
+stepFunctions:
+  stateMachines: 
+    verifyIdentityV3: 
+      definition:
+        Comment: "Start Identity Verification"
+        StartAt: StartIdentityVerification
+        States:
+          StartIdentityVerification:
+            Type: Task
+            Resource: arn:aws:lambda:us-west-2:YOUR_AWS_ACCOUNT_ID:function:serverless-app-rest-api-dev-verifyIdentityV2
+            ResultPath: $.results.StartIdentityVerification
+            Next: ProcessIdentityVerification
+          ProcessIdentityVerification:
+            Type: Parallel
+            Next: CompareKTPAndPhotoFace
+            Branches:
+            - StartAt: UploadKTPImageState
+              States:
+                UploadKTPImageState:
+                  Type: Task
+                  Resource: arn:aws:lambda:us-west-2:YOUR_AWS_ACCOUNT_ID:function:serverless-app-rest-api-dev-uploadKTPImage
+                  ResultPath: $.results.UploadKTPImageState
+                  End: true
+            - StartAt: UploadPhotoImageState
+              States:
+                UploadPhotoImageState:
+                  Type: Task
+                  Resource: arn:aws:lambda:us-west-2:YOUR_AWS_ACCOUNT_ID:function:serverless-app-rest-api-dev-uploadPhotoImage
+                  ResultPath: $.results.UploadPhotoImageState
+                  End: true
+          CompareKTPAndPhotoFace:
+            Type: Task
+            Resource: arn:aws:lambda:us-west-2:YOUR_AWS_ACCOUNT_ID:function:serverless-app-rest-api-dev-compareKTPAndPhotoFace
+            Next: IdentityResult
+          IdentityResult:
+            Type: Task
+            Resource: arn:aws:lambda:us-west-2:YOUR_AWS_ACCOUNT_ID:function:serverless-app-rest-api-dev-identityResult
+            End: true
+
+          # DetectNameFromKtpImages:
+          #   Type: Task
+          #   Resource: arn:aws:lambda:us-west-2:YOUR_AWS_ACCOUNT_ID:function:serverless-app-rest-api-dev-detectNameFromKtpImages
+          #   End: true
+
+# The `resources` block defines what resource do you want
+resources:
+  Resources:
+    PictureBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: serverless-app-images
+    RequestIdentityvalidationQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: requets-identity-validation
+    SampleQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: sample-queue
+    SampleDestinationQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: sample-destination-queue
+    IdentityValidationsTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        TableName: IdentityValidationsTable
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: customer_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+          - AttributeName: customer_id
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1

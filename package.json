@@ -1,0 +1,42 @@
+{
+  "name": "pearly-gates-rest-api",
+  "version": "1.0.0",
+  "description": "Pearly gates REST API",
+  "directories": {
+    "lib": "lib",
+    "test": "tests"
+  },
+  "pre-push": [
+    "test"
+  ],
+  "dependencies": {
+    "assert-plus": "^1.0.0",
+    "aws-sdk": "^2.268.1",
+    "fast-levenshtein": "^2.0.6"
+  },
+  "devDependencies": {
+    "grunt": "~0.4.5",
+    "grunt-bg-shell": "~2.3.1",
+    "grunt-config-dir": "~0.3.2",
+    "grunt-eslint": "^20.0.0",
+    "jest": "^21.2.1",
+    "pre-push": "~0.1.1",
+    "serverless-plugin-tracing": "^2.0.0",
+    "serverless-pseudo-parameters": "^1.6.0",
+    "serverless-step-functions": "^1.4.1"
+  },
+  "scripts": {
+    "test": "grunt test"
+  },
+  "jest": {
+    "collectCoverage": true,
+    "coverageReporters": [
+      "json",
+      "lcov",
+      "html",
+      "text"
+    ]
+  },
+  "author": "Rupak Ganguly",
+  "license": "MIT"
+}
